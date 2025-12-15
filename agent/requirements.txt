@@ -11,3 +11,6 @@ smithy-http==0.0.1
 smithy-json==0.0.1
 uvicorn[standard]
 fastapi
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-api-python-client>=2.100.0

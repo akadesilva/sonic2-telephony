@@ -11,7 +11,7 @@ from aws_sdk_bedrock_runtime.client import BedrockRuntimeClient, InvokeModelWith
 from aws_sdk_bedrock_runtime.models import InvokeModelWithBidirectionalStreamInputChunk, BidirectionalInputPayloadPart
 from aws_sdk_bedrock_runtime.config import Config, HTTPAuthSchemeResolver, SigV4AuthScheme
 from smithy_aws_core.credentials_resolvers.environment import EnvironmentCredentialsResolver
-import requests
+from tools import get_all_tool_definitions, execute_tool
 
 class NovaSonicBridge:
     def __init__(self, model_id='amazon.nova-2-sonic-v1:0', region='us-east-1'):
@@ -92,19 +92,7 @@ class NovaSonicBridge:
                     },
                     "toolUseOutputConfiguration": {"mediaType": "application/json"},
                     "toolConfiguration": {
-                        "tools": [{
-                            "toolSpec": {
-                                "name": "internet_search",
-                                "description": "Internet search with perplexity",
-                                "inputSchema": {
-                                    "json": json.dumps({
-                                        "type": "object",
-                                        "properties": {"query": {"type": "string", "description": "query to search"}},
-                                        "required": ["query"]
-                                    })
-                                }
-                            }
-                        }]
+                        "tools": get_all_tool_definitions()
                     }
                 }
             }
@@ -181,11 +169,8 @@ class NovaSonicBridge:
     async def _handle_tool_use(self, tool_name, tool_use, tool_use_id):
         content_name = str(uuid.uuid4())
         try:
-            if tool_name == "internet_search":
-                content = json.loads(tool_use.get('content', '{}'))
-                result = await self.internet_search(content)
-            else:
-                result = {"error": f"Unknown tool: {tool_name}"}
+            content = json.loads(tool_use.get('content', '{}'))
+            result = await execute_tool(tool_name, content)
             await self._send_tool_result(content_name, tool_use_id, result)
         except Exception as e:
             await self._send_tool_result(content_name, tool_use_id, {"error": str(e)})

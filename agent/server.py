@@ -171,10 +171,14 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Error: {e}")
     finally:
-        if response_task:
-            response_task.cancel()
         await nova_bridge.end_audio_input()
         await nova_bridge.end_session()
+        if response_task:
+            response_task.cancel()
+            try:
+                await response_task
+            except asyncio.CancelledError:
+                pass
 
 async def handle_audio_responses(websocket: WebSocket, nova_bridge: NovaSonicBridge):
     try:

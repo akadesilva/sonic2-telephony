@@ -25,12 +25,17 @@ class NovaSonicBridge:
         self.content_name = str(uuid.uuid4())
         self.audio_content_name = str(uuid.uuid4())
         self.audio_queue = asyncio.Queue()
-        self.pending_chunks = asyncio.Queue()
-        self.chunk_scheduler = None
         self.scheduler_paused = asyncio.Event()
         self.scheduler_paused.set()
         self.websocket = None
-        
+    
+    async def clear_vonage_buffer(self):
+        """Send clear command to Vonage to stop buffered audio playback"""
+        if self.websocket:
+            clear_command = json.dumps({"action": "clear"})
+            await self.websocket.send_text(clear_command)
+            print("Sent clear audio buffer command to Vonage")
+
     def _resample_audio(self, audio_bytes, from_rate=24000, to_rate=16000):
         audio_data = np.frombuffer(audio_bytes, dtype=np.int16)
         num_samples = int(len(audio_data) * to_rate / from_rate)
@@ -130,6 +135,18 @@ class NovaSonicBridge:
     async def start_audio_input(self):
         audio_content_start = f'{{"event":{{"contentStart":{{"promptName":"{self.prompt_name}","contentName":"{self.audio_content_name}","type":"AUDIO","interactive":true,"role":"USER","audioInputConfiguration":{{"mediaType":"audio/lpcm","sampleRateHertz":16000,"sampleSizeBits":16,"channelCount":1,"audioType":"SPEECH","encoding":"base64"}}}}}}}}'
         await self.send_event(audio_content_start)
+        # Play hello.raw as conversation starter
+        try:
+            with open('hello.raw', 'rb') as f:
+                hello_audio = f.read()
+            
+            # Send hello audio in chunks
+            chunk_size = 640
+            for i in range(0, len(hello_audio), chunk_size):
+                chunk = hello_audio[i:i + chunk_size]
+                await self.send_audio_chunk(chunk)
+        except FileNotFoundError:
+            print("hello.raw file not found")
     
     async def send_audio_chunk(self, audio_bytes):
         if not self.is_active:
@@ -144,34 +161,6 @@ class NovaSonicBridge:
     
     async def get_audio_response(self):
         return await self.audio_queue.get()
-    
-    async def _schedule_chunks(self):
-        last_audio_time = time.time()
-        counter = 0
-        drift = 0
-        while self.is_active:
-            try:
-                await self.scheduler_paused.wait()
-                chunk = await self.pending_chunks.get()
-                
-                sleep_time = 0.016 - (time.time() - last_audio_time) - drift
-                if sleep_time > 0.18:
-                    await asyncio.sleep(0.18)
-                elif sleep_time > 0:
-                    await asyncio.sleep(sleep_time)
-                
-                last_audio_time = time.time()
-                await self.audio_queue.put(chunk)
-                counter += 1
-                
-                if counter % 50 == 0:
-                    now = time.time()
-                    drift = (now - last_audio_time) / 50
-                    if drift > 0.5:
-                        drift = 0
-                    counter = 0
-            except Exception:
-                break
 
     async def internet_search(self, query):
         api_key = os.getenv("PERPLEXITY_API_KEY", "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")
@@ -245,13 +234,17 @@ class NovaSonicBridge:
         if not self.is_active:
             return
         self.is_active = False
-        if self.chunk_scheduler and not self.chunk_scheduler.done():
-            self.chunk_scheduler.cancel()
+
         await self.send_event(f'{{"event":{{"promptEnd":{{"promptName":"{self.prompt_name}"}}}}}}')
         await self.send_event('{"event":{"sessionEnd":{}}}')
         await self.stream.input_stream.close()
         if self.response and not self.response.done():
-            self.response.cancel()
+            try:
+                await asyncio.wait_for(self.response, timeout=2.0)
+            except asyncio.TimeoutError:
+                self.response.cancel()
+            except Exception:
+                pass
     
     async def _process_responses(self):
         try:
@@ -268,27 +261,25 @@ class NovaSonicBridge:
                         audio_bytes = base64.b64decode(audio_content)
                         resampled_audio = self._resample_audio(audio_bytes)
                         
-                        if not self.chunk_scheduler:
-                            self.chunk_scheduler = asyncio.create_task(self._schedule_chunks())
-                        
                         chunk_size = 640
                         for i in range(0, len(resampled_audio), chunk_size):
                             chunk = resampled_audio[i:i + chunk_size]
-                            await self.pending_chunks.put(chunk)
+                            await self.audio_queue.put(chunk)
                     
                     elif 'event' in json_data and 'textOutput' in json_data['event']:
                         content = json_data['event']['textOutput'].get('content', '')
                         try:
                             content_json = json.loads(content)
                             if content_json.get('interrupted'):
-                                self.scheduler_paused.clear()
+                                # Clear Vonage's audio buffer
+                                await self.clear_vonage_buffer()
                                 await asyncio.sleep(0.1)
-                                while not self.pending_chunks.empty():
+                                
+                                while not self.audio_queue.empty():
                                     try:
-                                        self.pending_chunks.get_nowait()
+                                        self.audio_queue.get_nowait()
                                     except asyncio.QueueEmpty:
                                         break
-                                self.scheduler_paused.set()
                         except json.JSONDecodeError:
                             pass
                     

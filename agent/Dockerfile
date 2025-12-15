@@ -7,6 +7,8 @@ RUN pip install -r requirements.txt
 
 COPY nova_sonic_bridge.py ./
 COPY server.py ./
+COPY hello.raw ./
+COPY tools/ ./tools/
 
 EXPOSE 8080
 

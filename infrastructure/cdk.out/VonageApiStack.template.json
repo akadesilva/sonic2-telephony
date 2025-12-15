@@ -1,0 +1,936 @@
+{
+ "Resources": {
+  "VonageLambdaRole17A1A3E3": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/VonageLambdaRole/Resource"
+   }
+  },
+  "VonageLambdaRoleDefaultPolicyE9BA9151": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "bedrock-agentcore:*",
+       "Effect": "Allow",
+       "Resource": "*"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "VonageLambdaRoleDefaultPolicyE9BA9151",
+    "Roles": [
+     {
+      "Ref": "VonageLambdaRole17A1A3E3"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/VonageLambdaRole/DefaultPolicy/Resource"
+   }
+  },
+  "AnswerWebhookDE7C312C": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "b15fbb2e7360fb5230442569a67f34caf34fd4dea692056a9e8390d9c0403c92.zip"
+    },
+    "Environment": {
+     "Variables": {
+      "RUNTIME_ARN": "arn:aws:bedrock-agentcore:us-east-1:318766877259:runtime/sonic2telephonyagent-o4NiyBEeVf",
+      "VONAGE_SIGNATURE_SECRET": ""
+     }
+    },
+    "Handler": "answer_handler.lambda_handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "VonageLambdaRole17A1A3E3",
+      "Arn"
+     ]
+    },
+    "Runtime": "python3.12",
+    "Timeout": 30
+   },
+   "DependsOn": [
+    "VonageLambdaRoleDefaultPolicyE9BA9151",
+    "VonageLambdaRole17A1A3E3"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/AnswerWebhook/Resource",
+    "aws:asset:path": "asset.b15fbb2e7360fb5230442569a67f34caf34fd4dea692056a9e8390d9c0403c92",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "EventWebhookA61EB9D1": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "1b257cf5189ca9172e58c1d5bc9005d9fa068f99e397c12fbc1a7d40fd9289da.zip"
+    },
+    "Handler": "event_handler.lambda_handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "VonageLambdaRole17A1A3E3",
+      "Arn"
+     ]
+    },
+    "Runtime": "python3.12",
+    "Timeout": 30
+   },
+   "DependsOn": [
+    "VonageLambdaRoleDefaultPolicyE9BA9151",
+    "VonageLambdaRole17A1A3E3"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/EventWebhook/Resource",
+    "aws:asset:path": "asset.1b257cf5189ca9172e58c1d5bc9005d9fa068f99e397c12fbc1a7d40fd9289da",
+    "aws:asset:is-bundled": false,
+    "aws:asset:property": "Code"
+   }
+  },
+  "VonageWebhooksApi5A96C38F": {
+   "Type": "AWS::ApiGateway::RestApi",
+   "Properties": {
+    "Description": "Vonage webhook endpoints for Nova Sonic",
+    "Name": "vonage-webhooks"
+   },
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/VonageWebhooksApi/Resource"
+   }
+  },
+  "VonageWebhooksApiCloudWatchRole5A340BD7": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "apigateway.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+       ]
+      ]
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/VonageWebhooksApi/CloudWatchRole/Resource"
+   }
+  },
+  "VonageWebhooksApiAccount9A8FDF13": {
+   "Type": "AWS::ApiGateway::Account",
+   "Properties": {
+    "CloudWatchRoleArn": {
+     "Fn::GetAtt": [
+      "VonageWebhooksApiCloudWatchRole5A340BD7",
+      "Arn"
+     ]
+    }
+   },
+   "DependsOn": [
+    "VonageWebhooksApi5A96C38F"
+   ],
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/VonageWebhooksApi/Account"
+   }
+  },
+  "VonageWebhooksApiDeploymentEF6625D35d92b74408b3b1cc3968e20d4695228e": {
+   "Type": "AWS::ApiGateway::Deployment",
+   "Properties": {
+    "Description": "Vonage webhook endpoints for Nova Sonic",
+    "RestApiId": {
+     "Ref": "VonageWebhooksApi5A96C38F"
+    }
+   },
+   "DependsOn": [
+    "VonageWebhooksApianswerPOSTCE9C1E5F",
+    "VonageWebhooksApianswerBA33141B",
+    "VonageWebhooksApieventPOST47FE32B7",
+    "VonageWebhooksApievent38E05D2C"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/VonageWebhooksApi/Deployment/Resource",
+    "aws:cdk:do-not-refactor": true
+   }
+  },
+  "VonageWebhooksApiDeploymentStageprod1D9E60D1": {
+   "Type": "AWS::ApiGateway::Stage",
+   "Properties": {
+    "DeploymentId": {
+     "Ref": "VonageWebhooksApiDeploymentEF6625D35d92b74408b3b1cc3968e20d4695228e"
+    },
+    "RestApiId": {
+     "Ref": "VonageWebhooksApi5A96C38F"
+    },
+    "StageName": "prod"
+   },
+   "DependsOn": [
+    "VonageWebhooksApiAccount9A8FDF13"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/VonageWebhooksApi/DeploymentStage.prod/Resource"
+   }
+  },
+  "VonageWebhooksApianswerBA33141B": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Fn::GetAtt": [
+      "VonageWebhooksApi5A96C38F",
+      "RootResourceId"
+     ]
+    },
+    "PathPart": "answer",
+    "RestApiId": {
+     "Ref": "VonageWebhooksApi5A96C38F"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/VonageWebhooksApi/Default/answer/Resource"
+   }
+  },
+  "VonageWebhooksApianswerPOSTApiPermissionVonageApiStackVonageWebhooksApi4A60A2F0POSTanswer269D07ED": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "AnswerWebhookDE7C312C",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:",
+       {
+        "Ref": "AWS::Region"
+       },
+       ":",
+       {
+        "Ref": "AWS::AccountId"
+       },
+       ":",
+       {
+        "Ref": "VonageWebhooksApi5A96C38F"
+       },
+       "/",
+       {
+        "Ref": "VonageWebhooksApiDeploymentStageprod1D9E60D1"
+       },
+       "/POST/answer"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/VonageWebhooksApi/Default/answer/POST/ApiPermission.VonageApiStackVonageWebhooksApi4A60A2F0.POST..answer"
+   }
+  },
+  "VonageWebhooksApianswerPOSTApiPermissionTestVonageApiStackVonageWebhooksApi4A60A2F0POSTanswer235D5AE1": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "AnswerWebhookDE7C312C",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:",
+       {
+        "Ref": "AWS::Region"
+       },
+       ":",
+       {
+        "Ref": "AWS::AccountId"
+       },
+       ":",
+       {
+        "Ref": "VonageWebhooksApi5A96C38F"
+       },
+       "/test-invoke-stage/POST/answer"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/VonageWebhooksApi/Default/answer/POST/ApiPermission.Test.VonageApiStackVonageWebhooksApi4A60A2F0.POST..answer"
+   }
+  },
+  "VonageWebhooksApianswerPOSTCE9C1E5F": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "POST",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:",
+        {
+         "Ref": "AWS::Region"
+        },
+        ":lambda:path/2015-03-31/functions/",
+        {
+         "Fn::GetAtt": [
+          "AnswerWebhookDE7C312C",
+          "Arn"
+         ]
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "VonageWebhooksApianswerBA33141B"
+    },
+    "RestApiId": {
+     "Ref": "VonageWebhooksApi5A96C38F"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/VonageWebhooksApi/Default/answer/POST/Resource"
+   }
+  },
+  "VonageWebhooksApievent38E05D2C": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Fn::GetAtt": [
+      "VonageWebhooksApi5A96C38F",
+      "RootResourceId"
+     ]
+    },
+    "PathPart": "event",
+    "RestApiId": {
+     "Ref": "VonageWebhooksApi5A96C38F"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/VonageWebhooksApi/Default/event/Resource"
+   }
+  },
+  "VonageWebhooksApieventPOSTApiPermissionVonageApiStackVonageWebhooksApi4A60A2F0POSTeventDDB02130": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "EventWebhookA61EB9D1",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:",
+       {
+        "Ref": "AWS::Region"
+       },
+       ":",
+       {
+        "Ref": "AWS::AccountId"
+       },
+       ":",
+       {
+        "Ref": "VonageWebhooksApi5A96C38F"
+       },
+       "/",
+       {
+        "Ref": "VonageWebhooksApiDeploymentStageprod1D9E60D1"
+       },
+       "/POST/event"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/VonageWebhooksApi/Default/event/POST/ApiPermission.VonageApiStackVonageWebhooksApi4A60A2F0.POST..event"
+   }
+  },
+  "VonageWebhooksApieventPOSTApiPermissionTestVonageApiStackVonageWebhooksApi4A60A2F0POSTevent7939F515": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "EventWebhookA61EB9D1",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:",
+       {
+        "Ref": "AWS::Region"
+       },
+       ":",
+       {
+        "Ref": "AWS::AccountId"
+       },
+       ":",
+       {
+        "Ref": "VonageWebhooksApi5A96C38F"
+       },
+       "/test-invoke-stage/POST/event"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/VonageWebhooksApi/Default/event/POST/ApiPermission.Test.VonageApiStackVonageWebhooksApi4A60A2F0.POST..event"
+   }
+  },
+  "VonageWebhooksApieventPOST47FE32B7": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "POST",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:",
+        {
+         "Ref": "AWS::Region"
+        },
+        ":lambda:path/2015-03-31/functions/",
+        {
+         "Fn::GetAtt": [
+          "EventWebhookA61EB9D1",
+          "Arn"
+         ]
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "VonageWebhooksApievent38E05D2C"
+    },
+    "RestApiId": {
+     "Ref": "VonageWebhooksApi5A96C38F"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/VonageWebhooksApi/Default/event/POST/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/02Q3W7DIAyFn2X3hGnJE6Sddjctah+gosTLvPATxaAqinj3GtjUXvk7xhwfuZVt18r2Rd2o0ePcGLzK/RyUngW3LjsqK/eTNyCO367UwRvUW5aVkjDKXkcl94/odEDv8tszD7BaJGKVBHUXRQSBZJ8La3mIeoZwUARCLTipADe18VKg0C9Y9j6w19pHF8Q7LMZvFhi5+6Q4+1TCVuCvPq4aiv2/+POs/Anhx4+5VSmlx1zJmI3QTXniK4YlhiSGjSfdayffOr7dLyE2K6dCC/JU6x1KN3ovWAEAAA=="
+   },
+   "Metadata": {
+    "aws:cdk:path": "VonageApiStack/CDKMetadata/Default"
+   },
+   "Condition": "CDKMetadataAvailable"
+  }
+ },
+ "Outputs": {
+  "VonageWebhooksApiEndpoint4CDD60BB": {
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "https://",
+      {
+       "Ref": "VonageWebhooksApi5A96C38F"
+      },
+      ".execute-api.",
+      {
+       "Ref": "AWS::Region"
+      },
+      ".",
+      {
+       "Ref": "AWS::URLSuffix"
+      },
+      "/",
+      {
+       "Ref": "VonageWebhooksApiDeploymentStageprod1D9E60D1"
+      },
+      "/"
+     ]
+    ]
+   }
+  },
+  "ApiUrl": {
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "https://",
+      {
+       "Ref": "VonageWebhooksApi5A96C38F"
+      },
+      ".execute-api.",
+      {
+       "Ref": "AWS::Region"
+      },
+      ".",
+      {
+       "Ref": "AWS::URLSuffix"
+      },
+      "/",
+      {
+       "Ref": "VonageWebhooksApiDeploymentStageprod1D9E60D1"
+      },
+      "/"
+     ]
+    ]
+   }
+  },
+  "AnswerUrl": {
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "https://",
+      {
+       "Ref": "VonageWebhooksApi5A96C38F"
+      },
+      ".execute-api.",
+      {
+       "Ref": "AWS::Region"
+      },
+      ".",
+      {
+       "Ref": "AWS::URLSuffix"
+      },
+      "/",
+      {
+       "Ref": "VonageWebhooksApiDeploymentStageprod1D9E60D1"
+      },
+      "/answer"
+     ]
+    ]
+   }
+  },
+  "EventUrl": {
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "https://",
+      {
+       "Ref": "VonageWebhooksApi5A96C38F"
+      },
+      ".execute-api.",
+      {
+       "Ref": "AWS::Region"
+      },
+      ".",
+      {
+       "Ref": "AWS::URLSuffix"
+      },
+      "/",
+      {
+       "Ref": "VonageWebhooksApiDeploymentStageprod1D9E60D1"
+      },
+      "/event"
+     ]
+    ]
+   }
+  }
+ },
+ "Conditions": {
+  "CDKMetadataAvailable": {
+   "Fn::Or": [
+    {
+     "Fn::Or": [
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "af-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-east-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-northeast-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-northeast-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-northeast-3"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-south-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-southeast-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-southeast-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-southeast-3"
+       ]
+      }
+     ]
+    },
+    {
+     "Fn::Or": [
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-southeast-4"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ca-central-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ca-west-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "cn-north-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "cn-northwest-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-central-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-central-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-north-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-south-2"
+       ]
+      }
+     ]
+    },
+    {
+     "Fn::Or": [
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-west-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-west-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-west-3"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "il-central-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "me-central-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "me-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "sa-east-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "us-east-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "us-east-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "us-west-1"
+       ]
+      }
+     ]
+    },
+    {
+     "Fn::Equals": [
+      {
+       "Ref": "AWS::Region"
+      },
+      "us-west-2"
+     ]
+    }
+   ]
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

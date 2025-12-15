@@ -1,0 +1,10 @@
+boto3==1.34.0
+numpy==2.3.2
+scipy==1.16.1
+requests==2.32.4
+aws_sdk_bedrock_runtime==0.0.2
+smithy-aws-core==0.0.3
+smithy-core==0.0.2
+smithy-http==0.0.1
+uvicorn[standard]
+fastapi

@@ -13,3 +13,4 @@ setup_config.json
 .env
 .DS_Store
 .venv/
+cdk.out

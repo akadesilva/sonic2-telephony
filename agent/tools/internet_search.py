@@ -1,5 +1,6 @@
 import os
 import requests
+import json
 
 async def internet_search(query):
     """Search the internet using Perplexity API"""
@@ -25,11 +26,11 @@ def get_tool_definition():
             "name": "internet_search",
             "description": "Internet search with perplexity",
             "inputSchema": {
-                "json": {
+                "json": json.dumps({
                     "type": "object",
                     "properties": {"query": {"type": "string", "description": "query to search"}},
                     "required": ["query"]
-                }
+                })
             }
         }
     }

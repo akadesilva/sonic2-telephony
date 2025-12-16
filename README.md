@@ -85,10 +85,17 @@ aws secretsmanager create-secret \
 
 ```bash
 cd agent
-agentcore configure -e server.py
+agentcore configure -e server.py -n sonic2_telephony_agent
 ```
 
-Keep everything default
+- Execution Role: Enter to auto create
+- ECR Repository URI: Enter to auto create
+- Dependency file: keep the auto detected requirements.txt
+- Configure OAuth authorizer instead: No
+- Configure request header allowlist?: Yes
+- Enter allowed request headers: X-Amzn-Bedrock-AgentCore-Runtime-Custom-Caller
+- Enable long term memory extraction: No
+
 
 ```bash
 agentcore launch
@@ -117,6 +124,48 @@ The `secrets-policy.json` file grants read access to the Google token and Perple
 
 ### 6. Deploy Vonage Telephony Integration
 
+#### 6.1 Setup Vonage Account
+
+1. **Create Vonage Account**
+   - Go to [Vonage API Dashboard](https://dashboard.nexmo.com/)
+   - Sign up for a free account
+   - Verify your email
+
+2. **Create a Vonage Application**
+   - Navigate to **Applications** in the dashboard
+   - Click **Create a new application**
+   - Application name: `Nova Sonic Agent`
+   - Select **Voice** capability
+   - Under **Voice**:
+     - Answer URL: Enter a placeholder (e.g., `https://example.com/answer`)
+     - Answer URL HTTP Method: `POST`
+     - Event URL: Enter a placeholder (e.g., `https://example.com/event`)
+     - Event URL HTTP Method: `POST`
+   - Click **Generate new application**
+   - **Save the Application ID**
+
+3. **Get a Phone Number**
+   - Navigate to **Numbers** → **Buy numbers**
+   - Select your country
+   - Choose **Voice** capability
+   - Select a number (mobile or landline)
+   - Click **Buy**
+
+4. **Link Number to Application**
+   - Navigate to **Numbers** → **Your numbers**
+   - Find your purchased number
+   - Click **Edit** (pencil icon)
+   - Under **Voice**, select your application: `Nova Sonic Agent`
+   - Click **Ok**
+
+5. **Get Signature Secret (Optional but Recommended)**
+   - Go to your application settings
+   - Navigate to **API Settings** → **Signed Webhooks**
+   - Copy the signature secret
+   - You'll use this in the next step
+
+#### 6.2 Deploy Infrastructure
+
 Deploy the API Gateway and Lambda functions to handle phone calls:
 
 ```bash
@@ -129,7 +178,7 @@ pip install -r requirements.txt
 
 # Deploy with your Runtime ARN from step 4
 export RUNTIME_ARN="arn:aws:bedrock:us-east-1:123456789012:agent-runtime/your_runtime_id"
-export VONAGE_SIGNATURE_SECRET="your_signature_secret"  # Get from Vonage dashboard
+export VONAGE_SIGNATURE_SECRET="your_signature_secret"  # From step 6.1.5
 ./deploy.sh
 ```
 
@@ -138,10 +187,27 @@ This deploys:
 - Lambda functions to handle Vonage webhooks
 - IAM roles with necessary permissions
 
-**Configure Vonage:**
-After deployment, configure your Vonage application with the output URLs:
+**Save the output URLs:**
 - Answer URL: `https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/answer`
 - Event URL: `https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/event`
+
+#### 6.3 Update Vonage Webhook URLs
+
+Go back to your Vonage application and update the webhook URLs:
+
+1. Navigate to **Applications** in the Vonage dashboard
+2. Select your `Nova Sonic Agent` application
+3. Under **Voice**:
+   - Answer URL: Paste the Answer URL from step 6.2
+   - Event URL: Paste the Event URL from step 6.2
+4. Click **Save**
+
+#### 6.4 Test Your Setup
+
+Call your Vonage number! You should:
+1. Hear the agent say "Hello! How can I help you today?"
+2. Be able to have a natural conversation
+3. Ask the agent to check your calendar, add notes, or search the internet
 
 For detailed instructions, see [infrastructure/README.md](infrastructure/README.md).
 

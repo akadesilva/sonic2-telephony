@@ -19,13 +19,13 @@ def verify_vonage_jwt(token, signature_secret):
     except InvalidTokenError as e:
         return False, str(e)
 
-def generate_presigned_url(runtime_arn, region, expires=3600):
+def generate_presigned_url(runtime_arn, region, caller, expires=3600):
     """Generate presigned WebSocket URL for AgentCore"""
     session = boto3.Session()
     credentials = session.get_credentials()
     
-    # Construct WebSocket URL
-    ws_url = f"wss://bedrock-agentcore.{region}.amazonaws.com/runtimes/{runtime_arn}/ws?qualifier=DEFAULT"
+    # Construct WebSocket URL with caller as query parameter
+    ws_url = f"wss://bedrock-agentcore.{region}.amazonaws.com/runtimes/{runtime_arn}/ws?qualifier=DEFAULT&caller={caller}"
     https_url = ws_url.replace("wss://", "https://")
     
     parsed_url = urlparse(https_url)
@@ -63,9 +63,10 @@ def lambda_handler(event, context):
                 'body': json.dumps({'error': f'Invalid JWT: {result}'})
             }
     
+    print(event)
     # Generate presigned WebSocket URL
-    ws_url = generate_presigned_url(runtime_arn, region)
-    
+    ws_url = generate_presigned_url(runtime_arn, region, json.loads(event.get('body', {})).get('from', ''))
+    print(ws_url)
     # Return NCCO to connect call to WebSocket
     ncco = [
         {

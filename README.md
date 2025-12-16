@@ -346,7 +346,7 @@ def get_tool_definitions():
 
 ## License
 
-MIT License - See LICENSE file for details
+This project is licensed under the MIT-0 License - see the [LICENSE](LICENSE) file for details.
 
 ## Contributing
 

@@ -22,6 +22,9 @@ class VonageApiStack(Stack):
         # Get Vonage signature secret (optional)
         signature_secret = self.node.try_get_context("vonage_signature_secret") or os.environ.get("VONAGE_SIGNATURE_SECRET", "")
         
+        # Get allowed caller number (optional)
+        allowed_caller = self.node.try_get_context("allowed_caller_number") or os.environ.get("ALLOWED_CALLER_NUMBER", "")
+        
         # Lambda execution role
         lambda_role = iam.Role(
             self, "VonageLambdaRole",
@@ -58,7 +61,8 @@ class VonageApiStack(Stack):
             timeout=Duration.seconds(30),
             environment={
                 "RUNTIME_ARN": runtime_arn,
-                "VONAGE_SIGNATURE_SECRET": signature_secret
+                "VONAGE_SIGNATURE_SECRET": signature_secret,
+                "ALLOWED_CALLER_NUMBER": allowed_caller
             }
         )
         

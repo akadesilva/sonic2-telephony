@@ -44,6 +44,18 @@ def lambda_handler(event, context):
     runtime_arn = os.environ['RUNTIME_ARN']
     region = os.environ.get('AWS_REGION', context.invoked_function_arn.split(':')[3])
     signature_secret = os.environ.get('VONAGE_SIGNATURE_SECRET')
+    allowed_caller = os.environ.get('ALLOWED_CALLER_NUMBER')
+    
+    # Parse request body
+    body = json.loads(event.get('body', '{}'))
+    caller = body.get('from', '')
+    
+    # Check if caller is allowed (if ALLOWED_CALLER_NUMBER is set)
+    if allowed_caller and caller != allowed_caller:
+        return {
+            'statusCode': 403,
+            'body': json.dumps({'error': 'Caller not authorized'})
+        }
     
     # Verify JWT if signature secret is configured
     if signature_secret:
@@ -65,7 +77,7 @@ def lambda_handler(event, context):
     
     print(event)
     # Generate presigned WebSocket URL
-    ws_url = generate_presigned_url(runtime_arn, region, json.loads(event.get('body', {})).get('from', ''))
+    ws_url = generate_presigned_url(runtime_arn, region, caller)
     print(ws_url)
     # Return NCCO to connect call to WebSocket
     ncco = [

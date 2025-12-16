@@ -2,6 +2,31 @@
 
 A voice-based personal assistant powered by Amazon Nova Sonic 2, capable of managing calendars, taking notes, and searching the internet over phone calls.
 
+## Key Learnings
+
+### Handling High-Jitter Telephony Networks
+
+Telephony networks like PSTN introduce significant jitter compared to standard internet connections. This presents unique challenges:
+
+**The Buffer Dilemma:**
+- **Larger buffers needed**: High jitter requires larger playback buffers to prevent audio dropouts
+- **Barge-in interference**: Larger buffers delay interrupt detection - queued audio chunks must play before the system recognizes user interruption
+- **Solution**: Vonage and Twilio provide a "clear buffer" capability that must be called when Nova Sonic sends an interrupt event
+
+**Implementation:**
+1. When Nova Sonic detects interruption, it sends an interrupt event
+2. Immediately call Vonage's clear buffer API to flush queued audio on the telephony provider side
+3. Discard any audio packets not yet sent to the telephony provider
+4. This enables responsive barge-in despite the larger buffers
+
+### Proactive Conversation Start
+
+Instead of waiting for the user to speak first (which can be awkward on a phone call), we send a static `hello.raw` audio file immediately after connection. This:
+- Greets the user naturally: "Hello! How can I help you today?"
+- Eliminates the "dead air" moment
+- Makes the interaction feel more natural and phone-like
+- Triggers Nova Sonic to start the conversation flow
+
 ## Features
 
 - **Voice Conversations**: Natural phone-based interactions using Amazon Nova Sonic 2
@@ -179,6 +204,7 @@ pip install -r requirements.txt
 # Deploy with your Runtime ARN from step 4
 export RUNTIME_ARN="arn:aws:bedrock:us-east-1:123456789012:agent-runtime/your_runtime_id"
 export VONAGE_SIGNATURE_SECRET="your_signature_secret"  # From step 6.1.5
+export ALLOWED_CALLER_NUMBER="61421111111"  # Restrict to your phone number (format: country code + number)
 ./deploy.sh
 ```
 
@@ -343,6 +369,14 @@ def get_tool_definitions():
 **Timezone issues:**
 - Update `TIMEZONE_OFFSET` in `config.py`
 - Restart agent after changes
+
+## Roadmap
+
+### Planned Features
+
+- **AgentCore Memory Integration**: Persistent conversation memory across calls using Amazon Bedrock AgentCore Memory
+- **Async Tool Calls**: Avoid that awkward slience during a tool call like internet search
+- **Multi-User Support**: Currently single-user only. Add user identification via phone number to support multiple users with separate calendars and notes
 
 ## License
 

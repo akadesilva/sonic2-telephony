@@ -11,14 +11,12 @@ CDK stack to deploy API Gateway and Lambda functions for Vonage webhooks.
 ## Quick Deploy
 
 ```bash
-# Option 1: Auto-detect from setup_config.json
-./deploy.sh
 
-# Option 2: Manually specify RUNTIME_ARN
+# Specify RUNTIME_ARN
 export RUNTIME_ARN="arn:aws:bedrock:us-east-1:123456789012:agent-runtime/vonage_sonic_agent_xxxx"
 ./deploy.sh
 
-# Option 3: With Vonage signature verification (recommended)
+# Optional: Specify RUNTIME_ARN with Vonage signature verification (recommended)
 export RUNTIME_ARN="arn:aws:bedrock:us-east-1:123456789012:agent-runtime/vonage_sonic_agent_xxxx"
 export VONAGE_SIGNATURE_SECRET="your_signature_secret_from_vonage_dashboard"
 ./deploy.sh
@@ -36,7 +34,7 @@ export VONAGE_SIGNATURE_SECRET="your_signature_secret_from_vonage_dashboard"
   - Automatic deployment
 
 - **IAM Role**:
-  - Lambda execution role with CloudWatch Logs permissions
+  - Lambda execution role with CloudWatch Logs permissions and Agent Core invocation permission
 
 ## Outputs
 
@@ -56,21 +54,6 @@ In your Vonage dashboard:
 3. Set **Event URL** to the `EventUrl` output
 4. Set HTTP method to **POST**
 
-## Manual Deployment
-
-```bash
-# Install dependencies
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# Bootstrap (first time only)
-cdk bootstrap
-
-# Deploy
-export RUNTIME_ARN="your-runtime-arn"
-cdk deploy --context runtime_arn=$RUNTIME_ARN
-```
 
 ## Cleanup
 
@@ -78,13 +61,3 @@ cdk deploy --context runtime_arn=$RUNTIME_ARN
 cdk destroy
 ```
 
-## Testing
-
-```bash
-# Test answer webhook
-curl -X POST https://your-api-url/answer \
-  -H "Content-Type: application/json" \
-  -d '{}'
-
-# Should return NCCO with WebSocket URL
-```

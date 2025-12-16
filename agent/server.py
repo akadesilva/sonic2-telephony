@@ -8,6 +8,7 @@ from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from nova_sonic_bridge import NovaSonicBridge
+from aws_secrets import setup_credentials
 
 # Configure logging
 LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
@@ -103,6 +104,9 @@ async def startup_event():
     global credential_refresh_task
     logger.info("🚀 Application starting up...")
     
+    # Setup secrets and credentials
+    setup_credentials()
+    
     if os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"):
         logger.info("✅ Using credentials from environment variables")
     else:
@@ -128,7 +132,7 @@ async def shutdown_event():
         except asyncio.CancelledError:
             pass
 
-@app.get("/health")
+@app.get("/ping")
 @app.get("/")
 async def health_check():
     return JSONResponse({"status": "healthy"})
@@ -137,7 +141,7 @@ async def health_check():
 async def websocket_endpoint(websocket: WebSocket):
     logger.info(f"WebSocket connection from: {websocket.client}")
     await websocket.accept()
-    
+    print(websocket.url)
     aws_region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
     nova_bridge = NovaSonicBridge(region=aws_region)
     nova_bridge.websocket = websocket

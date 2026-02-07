@@ -93,7 +93,10 @@ class NovaSonicBridge:
                     },
                     "toolUseOutputConfiguration": {"mediaType": "application/json"},
                     "toolConfiguration": {
-                        "tools": get_all_tool_definitions()
+                        "tools": get_all_tool_definitions(),
+                        "toolChoice": {
+                            "auto": {}
+                        }
                     }
                 }
             }
@@ -123,17 +126,19 @@ Communication guidelines:
 - Keep responses to 2-3 sentences maximum for better listening experience
 - Ask for one piece of information at a time rather than multiple questions
 - Confirm important details by repeating them back to the user
-- Let users know when you're using tools by saying things like "Let me search for that" or "I'll check your calendar"
+- When using tools, immediately acknowledge the action (e.g., "Let me search for that", "I'll check your calendar", "Let me look that up") and continue speaking naturally while the tool runs in the background
 - Use everyday language instead of technical terms
 - If you need clarification, ask specific follow-up questions
 - Do not read out URLs or web links from tool responses - they are not useful over the phone
 
-When using tools:
-- Provide verbal updates like "I'm searching now" or "Let me create that event for you"
-- Always use full datetime format YYYY-MM-DDTHH:MM:SS{TIMEZONE_OFFSET} for any date or time parameters
-- Summarize results clearly and ask if the user needs anything else
+IMPORTANT - Tool Usage Protocol:
+- ALWAYS provide immediate verbal acknowledgment when calling any tool
+- Say phrases like "Let me search for that", "I'll check your calendar", "Let me look that up" BEFORE the tool executes
+- Continue speaking naturally while tools run in the background
+- When tool results arrive, seamlessly incorporate them into your response
+- Never wait silently for tool results - keep the conversation flowing
 
-Remember, users can't see what you're doing, so keep them informed through your speech. Be patient, helpful, and focus on one task at a time for the best phone conversation experience."""
+Remember, users can't see what you're doing, so keep them informed through your speech. Be patient, helpful, and maintain natural conversation flow even during tool execution."""
         print(system_prompt)
         text_input = json.dumps({
             "event": {
@@ -198,8 +203,70 @@ Remember, users can't see what you're doing, so keep them informed through your 
         return response.json() if response.status_code == 200 else {"error": response.text}
 
     async def _handle_tool_use(self, tool_name, tool_use, tool_use_id):
+        # Execute tool asynchronously without blocking conversation
+        asyncio.create_task(self._execute_tool_async(tool_name, tool_use, tool_use_id))
+    
+    async def send_text(self, text):
+        """Send text to Nova Sonic during conversation"""
+        content_name = str(uuid.uuid4())
+        
+        # contentStart
+        content_start = {
+            "event": {
+                "contentStart": {
+                    "promptName": self.prompt_name,
+                    "contentName": content_name,
+                    "type": "TEXT",
+                    "interactive": True,
+                    "role": "USER",
+                    "textInputConfiguration": {"mediaType": "text/plain"}
+                }
+            }
+        }
+        await self.send_event(json.dumps(content_start))
+        
+        # textInput
+        text_input = {
+            "event": {
+                "textInput": {
+                    "promptName": self.prompt_name,
+                    "contentName": content_name,
+                    "content": text
+                }
+            }
+        }
+        await self.send_event(json.dumps(text_input))
+        
+        # contentEnd
+        content_end = {
+            "event": {
+                "contentEnd": {
+                    "promptName": self.prompt_name,
+                    "contentName": content_name
+                }
+            }
+        }
+        await self.send_event(json.dumps(content_end))
+
+    async def _execute_tool_async(self, tool_name, tool_use, tool_use_id):
         content_name = str(uuid.uuid4())
         try:
+            # FIRST: Send immediate verbal acknowledgment
+            acknowledgments = {
+                "internet_search": "Let me search for that information.",
+                "create_calendar_event": "I'll create that calendar event for you.",
+                "list_calendar_events": "Let me check your calendar.",
+                "update_calendar_event": "I'll update that event for you.",
+                "delete_calendar_event": "I'll remove that event from your calendar.",
+                "read_notes": "Let me read your notes.",
+                "update_notes": "I'll add that to your notes.",
+                "get_current_datetime": "Let me get the current time for you."
+            }
+            
+            acknowledgment = acknowledgments.get(tool_name, f"Let me {tool_name.replace('_', ' ')} for you.")
+            await self.send_text(acknowledgment)
+            
+            # THEN: Execute the tool
             content = json.loads(tool_use.get('content', '{}'))
             result = await execute_tool(tool_name, content)
             await self._send_tool_result(content_name, tool_use_id, result)

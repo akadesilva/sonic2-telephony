@@ -1,0 +1,14 @@
+boto3>=1.40.0
+botocore>=1.40.0
+numpy==2.3.2
+scipy==1.16.1
+requests==2.32.4
+uvicorn[standard]
+fastapi
+aws-opentelemetry-distro>=0.10.0
+aws_sdk_bedrock_runtime>=0.1.0
+smithy-aws-core>=0.1.0
+smithy-aws-event-stream>=0.1.0
+smithy-core>=0.1.0
+smithy-http>=0.1.0
+smithy-json>=0.1.0

@@ -1,0 +1,40 @@
+default_agent: sonic2_telephony_agent
+agents:
+  sonic2_telephony_agent:
+    name: sonic2_telephony_agent
+    entrypoint: server.py
+    platform: linux/arm64
+    container_runtime: docker
+    aws:
+      execution_role: arn:aws:iam::318766877259:role/AmazonBedrockAgentCoreSDKRuntime-us-east-1-16b81d5810
+      execution_role_auto_create: false
+      account: '318766877259'
+      region: us-east-1
+      ecr_repository: 318766877259.dkr.ecr.us-east-1.amazonaws.com/bedrock-agentcore-sonic2_telephony_agent
+      ecr_auto_create: false
+      network_configuration:
+        network_mode: PUBLIC
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+    bedrock_agentcore:
+      agent_id: sonic2_telephony_agent-U6a91a9mrA
+      agent_arn: arn:aws:bedrock-agentcore:us-east-1:318766877259:runtime/sonic2_telephony_agent-U6a91a9mrA
+      agent_session_id: null
+    codebuild:
+      project_name: bedrock-agentcore-sonic2_telephony_agent-builder
+      execution_role: arn:aws:iam::318766877259:role/AmazonBedrockAgentCoreSDKCodeBuild-us-east-1-16b81d5810
+      source_bucket: bedrock-agentcore-codebuild-sources-318766877259-us-east-1
+    memory:
+      mode: STM_ONLY
+      memory_id: sonic2_telephony_agent_mem-RxTFMe3Rex
+      memory_arn: arn:aws:bedrock-agentcore:us-east-1:318766877259:memory/sonic2_telephony_agent_mem-RxTFMe3Rex
+      memory_name: sonic2_telephony_agent_mem
+      event_expiry_days: 30
+      first_invoke_memory_check_done: false
+    authorizer_configuration: null
+    request_header_configuration:
+      requestHeaderAllowlist:
+      - X-Amzn-Bedrock-AgentCore-Runtime-Custom-Caller
+    oauth_configuration: null

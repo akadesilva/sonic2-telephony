@@ -10,9 +10,14 @@ from scipy import signal
 from aws_sdk_bedrock_runtime.client import BedrockRuntimeClient, InvokeModelWithBidirectionalStreamOperationInput
 from aws_sdk_bedrock_runtime.models import InvokeModelWithBidirectionalStreamInputChunk, BidirectionalInputPayloadPart
 from aws_sdk_bedrock_runtime.config import Config, HTTPAuthSchemeResolver, SigV4AuthScheme
-from smithy_aws_core.credentials_resolvers.environment import EnvironmentCredentialsResolver
+from smithy_aws_core.identity.environment import EnvironmentCredentialsResolver
 from tools import get_all_tool_definitions, execute_tool
 from config import TIMEZONE_OFFSET
+from otel_instrumentation import log_model_input, log_model_output, log_model_choice
+from opentelemetry import trace
+
+# Get tracer with proper scope name for AgentCore evaluations
+tracer = trace.get_tracer("strands.telemetry.tracer", "1.0.0")
 
 class NovaSonicBridge:
     def __init__(self, model_id='amazon.nova-2-sonic-v1:0', region='us-east-1'):
@@ -29,13 +34,13 @@ class NovaSonicBridge:
         self.scheduler_paused = asyncio.Event()
         self.scheduler_paused.set()
         self.websocket = None
+        self.session_span = None  # Track session span for logging
     
     async def clear_vonage_buffer(self):
         """Send clear command to Vonage to stop buffered audio playback"""
         if self.websocket:
             clear_command = json.dumps({"action": "clear"})
             await self.websocket.send_text(clear_command)
-            print("Sent clear audio buffer command to Vonage")
 
     def _resample_audio(self, audio_bytes, from_rate=24000, to_rate=16000):
         audio_data = np.frombuffer(audio_bytes, dtype=np.int16)
@@ -56,8 +61,8 @@ class NovaSonicBridge:
             endpoint_uri=f"https://bedrock-runtime.{self.region}.amazonaws.com",
             region=self.region,
             aws_credentials_identity_resolver=EnvironmentCredentialsResolver(),
-            http_auth_scheme_resolver=HTTPAuthSchemeResolver(),
-            http_auth_schemes={"aws.auth#sigv4": SigV4AuthScheme()}
+            auth_scheme_resolver=HTTPAuthSchemeResolver(),
+            auth_schemes={"aws.auth#sigv4": SigV4AuthScheme(service="bedrock")}
         )
         self.client = BedrockRuntimeClient(config=config)
     
@@ -68,6 +73,8 @@ class NovaSonicBridge:
         await self.stream.input_stream.send(event)
     
     async def start_session(self):
+        
+        
         if not self.client:
             self._initialize_client()
         
@@ -76,7 +83,9 @@ class NovaSonicBridge:
         )
         self.is_active = True
         
-        await self.send_event('{"event":{"sessionStart":{"inferenceConfiguration":{"maxTokens":4096,"topP":0.9,"temperature":0.7}}}}')
+        session_start_event = '{"event":{"sessionStart":{"inferenceConfiguration":{"maxTokens":4096,"topP":0.9,"temperature":0.7}}}}'
+        log_model_input(self.session_span, f"session_start: {session_start_event}")
+        await self.send_event(session_start_event)
         
         prompt_start = {
             "event": {
@@ -111,35 +120,40 @@ class NovaSonicBridge:
         current_time = datetime.now()
         current_date = current_time.strftime('%Y-%m-%d')
         
-        system_prompt = f"""You are Amy, a friendly and helpful personal assistant speaking over the phone. You have a warm, conversational tone and keep responses concise since people are listening, not reading.
+        system_prompt = f"""You are Maria, a friendly restaurant host taking orders over the phone for Bella Italia Restaurant. You have a warm, professional tone and keep responses concise since people are listening, not reading.
 
 CURRENT DATE: {current_date}
-TIMEZONE: Australia/Melbourne (Current offset: {TIMEZONE_OFFSET}) - Use this timezone for all date and time operations.
+TIMEZONE: Australia/Melbourne (Current offset: {TIMEZONE_OFFSET})
 
-Your capabilities include:
-- Searching the internet for current information when needed
-- Managing Google Calendar events - creating appointments and checking schedules  
-- Reading and updating daily notes
-- Providing current date and time information
+Your role:
+- Greet customers warmly and ask if they want dine-in or takeaway
+- Present the menu and help customers choose items
+- For DINE-IN: Check availability and create reservations (need date, time, party size, name, phone)
+- For TAKEAWAY: Take the order, calculate bill, and provide total
+
+Order flow:
+1. Ask: dine-in or takeaway?
+2. If dine-in: Get reservation details (date, time, party size, name, phone) → check availability → create reservation
+3. If takeaway: Create order → get menu items → add items → calculate bill → complete order
+4. Confirm all details before finalizing
 
 Communication guidelines:
-- Keep responses to 2-3 sentences maximum for better listening experience
-- Ask for one piece of information at a time rather than multiple questions
-- Confirm important details by repeating them back to the user
-- When using tools, immediately acknowledge the action (e.g., "Let me search for that", "I'll check your calendar", "Let me look that up") and continue speaking naturally while the tool runs in the background
-- Use everyday language instead of technical terms
-- If you need clarification, ask specific follow-up questions
-- Do not read out URLs or web links from tool responses - they are not useful over the phone
+- Keep responses to 2-3 sentences maximum
+- Ask for one piece of information at a time
+- Confirm important details by repeating them back
+- Use everyday language, be patient and helpful
+- When reading menu items, mention name and price only (skip descriptions unless asked)
 
-IMPORTANT - Tool Usage Protocol:
-- ALWAYS provide immediate verbal acknowledgment when calling any tool
-- Say phrases like "Let me search for that", "I'll check your calendar", "Let me look that up" BEFORE the tool executes
-- Continue speaking naturally while tools run in the background
-- When tool results arrive, seamlessly incorporate them into your response
-- Never wait silently for tool results - keep the conversation flowing
+Tool usage:
+- Use get_menu to show menu categories or specific items
+- Use check_availability before creating reservations
+- Use create_order at the start of takeaway orders
+- Use add_item_to_order for each menu item
+- Use calculate_bill to get the total
+- Use complete_order when customer confirms
+- Use reject_order if customer cancels
 
-Remember, users can't see what you're doing, so keep them informed through your speech. Be patient, helpful, and maintain natural conversation flow even during tool execution."""
-        print(system_prompt)
+Remember: You're helping customers have a great experience ordering from Bella Italia!"""
         text_input = json.dumps({
             "event": {
                 "textInput": {
@@ -170,18 +184,22 @@ Remember, users can't see what you're doing, so keep them informed through your 
                 chunk = hello_audio[i:i + chunk_size]
                 await self.send_audio_chunk(chunk)
         except FileNotFoundError:
-            print("hello.raw file not found")
+            pass
     
     async def send_audio_chunk(self, audio_bytes):
         if not self.is_active:
             return
+        
+        # Don't log audio chunks - too noisy
+        
         blob = base64.b64encode(audio_bytes).decode('utf-8')
         audio_event = f'{{"event":{{"audioInput":{{"promptName":"{self.prompt_name}","contentName":"{self.audio_content_name}","content":"{blob}"}}}}}}'
         await self.send_event(audio_event)
     
     async def end_audio_input(self):
-        audio_content_end = f'{{"event":{{"contentEnd":{{"promptName":"{self.prompt_name}","contentName":"{self.audio_content_name}"}}}}}}'
-        await self.send_event(audio_content_end)
+        if self.stream is not None:
+            audio_content_end = f'{{"event":{{"contentEnd":{{"promptName":"{self.prompt_name}","contentName":"{self.audio_content_name}"}}}}}}'
+            await self.send_event(audio_content_end)
     
     async def get_audio_response(self):
         return await self.audio_queue.get()
@@ -303,9 +321,14 @@ Remember, users can't see what you're doing, so keep them informed through your 
             return
         self.is_active = False
 
-        await self.send_event(f'{{"event":{{"promptEnd":{{"promptName":"{self.prompt_name}"}}}}}}')
-        await self.send_event('{"event":{"sessionEnd":{}}}')
-        await self.stream.input_stream.close()
+        if self.stream is not None:
+            await self.send_event(f'{{"event":{{"promptEnd":{{"promptName":"{self.prompt_name}"}}}}}}')
+            await self.send_event('{"event":{"sessionEnd":{}}}')
+            await self.stream.input_stream.close()
+        
+        # End OTEL span
+        if self.session_span:
+            self.session_span.end()
         if self.response and not self.response.done():
             try:
                 await asyncio.wait_for(self.response, timeout=2.0)
@@ -326,6 +349,8 @@ Remember, users can't see what you're doing, so keep them informed through your 
                     
                     if 'event' in json_data and 'audioOutput' in json_data['event']:
                         audio_content = json_data['event']['audioOutput']['content']
+                        
+                       
                         audio_bytes = base64.b64decode(audio_content)
                         resampled_audio = self._resample_audio(audio_bytes)
                         
@@ -335,7 +360,33 @@ Remember, users can't see what you're doing, so keep them informed through your 
                             await self.audio_queue.put(chunk)
                     
                     elif 'event' in json_data and 'textOutput' in json_data['event']:
-                        content = json_data['event']['textOutput'].get('content', '')
+                        text_output = json_data['event']['textOutput']
+                        content = text_output.get('content', '')
+                        role = text_output.get('role', 'UNKNOWN')
+                        
+                        # Log USER and ASSISTANT messages as separate events
+                        if self.session_span and content:
+                            if role == 'USER':
+                                self.session_span.add_event(
+                                    "gen_ai.user.message",
+                                    attributes={
+                                        "content": content[:1000],
+                                        "role": "user",
+                                        "completion_id": text_output.get('completionId', ''),
+                                        "content_id": text_output.get('contentId', '')
+                                    }
+                                )
+                            elif role == 'ASSISTANT':
+                                self.session_span.add_event(
+                                    "gen_ai.assistant.message",
+                                    attributes={
+                                        "content": content[:1000],
+                                        "role": "assistant",
+                                        "completion_id": text_output.get('completionId', ''),
+                                        "content_id": text_output.get('contentId', '')
+                                    }
+                                )
+                        
                         try:
                             content_json = json.loads(content)
                             if content_json.get('interrupted'):
@@ -353,8 +404,13 @@ Remember, users can't see what you're doing, so keep them informed through your 
                     
                     elif 'event' in json_data and 'toolUse' in json_data['event']:
                         tool_use = json_data['event']['toolUse']
+                        
+                        # Log tool use request to OTEL
+                        if self.session_span:
+                            log_model_choice(self.session_span, tool_use)
+                        
                         asyncio.create_task(self._handle_tool_use(
                             tool_use['toolName'], tool_use, tool_use['toolUseId']
                         ))
         except Exception as e:
-            print(f"Error processing responses: {e}")
+            print(e)

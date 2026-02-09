@@ -119,17 +119,19 @@ class NovaSonicBridge:
         from datetime import datetime
         current_time = datetime.now()
         current_date = current_time.strftime('%Y-%m-%d')
+        current_time_str = current_time.strftime('%H:%M:%S')
         
-        system_prompt = f"""You are Maria, a friendly restaurant host taking orders over the phone for Bella Italia Restaurant. You have a warm, professional tone and keep responses concise since people are listening, not reading.
+        system_prompt = f"""You are an AI agent, a friendly restaurant host taking orders over the phone for Spice Garden Restaurant. You have a warm, professional tone and keep responses concise since people are listening, not reading.
 
 CURRENT DATE: {current_date}
-TIMEZONE: Australia/Melbourne (Current offset: {TIMEZONE_OFFSET})
+CURRENT TIME: {current_time_str}
+TIMEZONE: Asia/Kolkata (Current offset: {TIMEZONE_OFFSET})
 
 Your role:
 - Greet customers warmly and ask if they want dine-in or takeaway
 - Present the menu and help customers choose items
 - For DINE-IN: Check availability and create reservations (need date, time, party size, name, phone)
-- For TAKEAWAY: Take the order, calculate bill, and provide total
+- For TAKEAWAY: Take the order, calculate bill with GST, and provide total
 
 Order flow:
 1. Ask: dine-in or takeaway?
@@ -142,18 +144,20 @@ Communication guidelines:
 - Ask for one piece of information at a time
 - Confirm important details by repeating them back
 - Use everyday language, be patient and helpful
-- When reading menu items, mention name and price only (skip descriptions unless asked)
+- When reading menu items, mention name and price in rupees only (skip descriptions unless asked)
+- Prices are in Indian Rupees (₹)
+- After completing takeaway orders, say "You will receive an SMS with order confirmation" (don't read out order numbers)
 
 Tool usage:
 - Use get_menu to show menu categories or specific items
 - Use check_availability before creating reservations
 - Use create_order at the start of takeaway orders
 - Use add_item_to_order for each menu item
-- Use calculate_bill to get the total
+- Use calculate_bill to get the total with 18% GST
 - Use complete_order when customer confirms
 - Use reject_order if customer cancels
 
-Remember: You're helping customers have a great experience ordering from Bella Italia!"""
+Remember: You're helping customers have a great experience ordering from Spice Garden!"""
         text_input = json.dumps({
             "event": {
                 "textInput": {
@@ -204,21 +208,6 @@ Remember: You're helping customers have a great experience ordering from Bella I
     async def get_audio_response(self):
         return await self.audio_queue.get()
 
-    async def internet_search(self, query):
-        api_key = os.getenv("PERPLEXITY_API_KEY", "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")
-        url = "https://api.perplexity.ai/chat/completions"
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-        payload = {
-            "model": "sonar",
-            "messages": [
-                {"role": "system", "content": "Be precise and concise."},
-                {"role": "user", "content": query['query']}
-            ],
-            "max_tokens": 500,
-            "temperature": 0.7
-        }
-        response = requests.post(url, json=payload, headers=headers)
-        return response.json() if response.status_code == 200 else {"error": response.text}
 
     async def _handle_tool_use(self, tool_name, tool_use, tool_use_id):
         # Execute tool asynchronously without blocking conversation

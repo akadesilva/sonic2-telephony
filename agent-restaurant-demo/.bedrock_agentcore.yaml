@@ -1,16 +1,16 @@
-default_agent: server
+default_agent: restaurant_agent
 agents:
-  server:
-    name: server
+  restaurant_agent:
+    name: restaurant_agent
     entrypoint: server.py
     platform: linux/arm64
     container_runtime: docker
     aws:
-      execution_role: arn:aws:iam::318766877259:role/AmazonBedrockAgentCoreSDKRuntime-us-east-1-b3eacd3343
+      execution_role: arn:aws:iam::318766877259:role/AmazonBedrockAgentCoreSDKRuntime-us-east-1-9949d4f62f
       execution_role_auto_create: false
       account: '318766877259'
       region: us-east-1
-      ecr_repository: 318766877259.dkr.ecr.us-east-1.amazonaws.com/bedrock-agentcore-server
+      ecr_repository: 318766877259.dkr.ecr.us-east-1.amazonaws.com/bedrock-agentcore-restaurant_agent
       ecr_auto_create: false
       network_configuration:
         network_mode: PUBLIC
@@ -19,20 +19,22 @@ agents:
       observability:
         enabled: true
     bedrock_agentcore:
-      agent_id: server-btCLLY358w
-      agent_arn: arn:aws:bedrock-agentcore:us-east-1:318766877259:runtime/server-btCLLY358w
+      agent_id: restaurant_agent-85eHk16bXR
+      agent_arn: arn:aws:bedrock-agentcore:us-east-1:318766877259:runtime/restaurant_agent-85eHk16bXR
       agent_session_id: null
     codebuild:
-      project_name: bedrock-agentcore-server-builder
-      execution_role: arn:aws:iam::318766877259:role/AmazonBedrockAgentCoreSDKCodeBuild-us-east-1-b3eacd3343
+      project_name: bedrock-agentcore-restaurant_agent-builder
+      execution_role: arn:aws:iam::318766877259:role/AmazonBedrockAgentCoreSDKCodeBuild-us-east-1-9949d4f62f
       source_bucket: bedrock-agentcore-codebuild-sources-318766877259-us-east-1
     memory:
-      mode: STM_ONLY
-      memory_id: server_mem-GATcwy50Vh
-      memory_arn: arn:aws:bedrock-agentcore:us-east-1:318766877259:memory/server_mem-GATcwy50Vh
-      memory_name: server_mem
+      mode: STM_AND_LTM
+      memory_id: restaurant_agent_mem-KovGM5AD5V
+      memory_arn: arn:aws:bedrock-agentcore:us-east-1:318766877259:memory/restaurant_agent_mem-KovGM5AD5V
+      memory_name: restaurant_agent_mem
       event_expiry_days: 30
       first_invoke_memory_check_done: false
     authorizer_configuration: null
-    request_header_configuration: null
+    request_header_configuration:
+      requestHeaderAllowlist:
+      - X-Amzn-Bedrock-AgentCore-Runtime-Custom-Caller
     oauth_configuration: null

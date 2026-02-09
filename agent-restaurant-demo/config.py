@@ -1,1 +1,1 @@
-TIMEZONE_OFFSET = "+11:00"  # Australia/Melbourne
+TIMEZONE_OFFSET = "+05:30"  # Asia/Kolkata (India)

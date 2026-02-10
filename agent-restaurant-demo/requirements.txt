@@ -12,3 +12,5 @@ smithy-aws-event-stream>=0.1.0
 smithy-core>=0.1.0
 smithy-http>=0.1.0
 smithy-json>=0.1.0
+bedrock-agentcore
+pyyaml

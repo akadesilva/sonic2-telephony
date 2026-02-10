@@ -17,6 +17,11 @@ from opentelemetry import baggage, context, trace
 logging.disable(logging.CRITICAL)  # Disable all logging
 logger = logging.getLogger(__name__)
 
+# Disable bedrock-agentcore SDK logging
+logging.getLogger('bedrock_agentcore').setLevel(logging.CRITICAL)
+logging.getLogger('botocore').setLevel(logging.CRITICAL)
+logging.getLogger('boto3').setLevel(logging.CRITICAL)
+
 # Get OTEL tracer with proper scope name for AgentCore evaluations
 tracer = trace.get_tracer("strands.telemetry.tracer", "1.0.0")
 
@@ -160,7 +165,7 @@ async def health_check():
     return JSONResponse({"status": "healthy"})
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, caller: str = "61421783196"):
     # Generate unique session ID for this call
     session_id = f"session-{uuid.uuid4()}"
     
@@ -200,7 +205,7 @@ async def websocket_endpoint(websocket: WebSocket):
             response_task = None
             
             try:
-                await nova_bridge.start_session()
+                await nova_bridge.start_session(actor_id=caller)
                 await nova_bridge.start_audio_input()
                 
                 # Start audio response handler

@@ -5,6 +5,7 @@ import uuid
 import numpy as np
 import time
 import os
+import yaml
 import boto3
 from scipy import signal
 from aws_sdk_bedrock_runtime.client import BedrockRuntimeClient, InvokeModelWithBidirectionalStreamOperationInput
@@ -15,6 +16,8 @@ from tools import get_all_tool_definitions, execute_tool
 from config import TIMEZONE_OFFSET
 from otel_instrumentation import log_model_input, log_model_output, log_model_choice
 from opentelemetry import trace
+from bedrock_agentcore.memory.session import MemorySessionManager
+from bedrock_agentcore.memory.constants import ConversationalMessage, MessageRole
 
 # Get tracer with proper scope name for AgentCore evaluations
 tracer = trace.get_tracer("strands.telemetry.tracer", "1.0.0")
@@ -35,6 +38,9 @@ class NovaSonicBridge:
         self.scheduler_paused.set()
         self.websocket = None
         self.session_span = None  # Track session span for logging
+        self.actor_id = None
+        self.memory_session = None
+        self.memory_session_manager = None
     
     async def clear_vonage_buffer(self):
         """Send clear command to Vonage to stop buffered audio playback"""
@@ -72,7 +78,105 @@ class NovaSonicBridge:
         )
         await self.stream.input_stream.send(event)
     
-    async def start_session(self):
+    async def start_session(self, actor_id: str = "61421783196"):
+        self.actor_id = actor_id
+        print(f"[MEMORY] Starting session for actor: {self.actor_id}")
+        
+        # Load memory config
+        try:
+            with open('.bedrock_agentcore.yaml', 'r') as f:
+                config = yaml.safe_load(f)
+                memory_id = config['agents']['restaurant_agent']['memory']['memory_id']
+                print(f"[MEMORY] Using memory ID: {memory_id}")
+                
+            # Initialize memory session
+            self.memory_session_manager = MemorySessionManager(
+                memory_id=memory_id,
+                region_name=self.region
+            )
+            
+            self.memory_session = self.memory_session_manager.create_memory_session(
+                actor_id=self.actor_id,
+                session_id=self.prompt_name
+            )
+            print(f"[MEMORY] Memory session created with session_id: {self.prompt_name}")
+            
+            # Retrieve user preferences from long-term memory
+            user_preferences = ""
+            try:
+                print(f"[MEMORY] Retrieving user preferences for actor: {self.actor_id}")
+                preferences = await asyncio.to_thread(
+                    self.memory_session.search_long_term_memories,
+                    namespace_prefix=f"/users/{self.actor_id}/preferences",
+                    query="user's name, food preferences, dietary restrictions, favorite dishes",
+                    top_k=3
+                )
+                
+                # Also retrieve semantic facts (where name often goes)
+                print(f"[MEMORY] Retrieving semantic facts for actor: {self.actor_id}")
+                facts = await asyncio.to_thread(
+                    self.memory_session.search_long_term_memories,
+                    namespace_prefix=f"/users/{self.actor_id}/facts",
+                    query="user's name",
+                    top_k=1
+                )
+                
+                # Combine preferences and facts
+                all_memories = list(preferences) + list(facts) if preferences and facts else (preferences or facts or [])
+                
+                if all_memories:
+                    print(f"[MEMORY] Found {len(all_memories)} memory record(s)")
+                    user_preferences = "\n\n========== USER PREFERENCES FROM PREVIOUS ORDERS ==========\n"
+                    for idx, memory in enumerate(all_memories):
+                        print(f"[MEMORY] Raw memory {idx+1} type: {type(memory)}")
+                        
+                        # Extract content from MemoryRecord object
+                        content_text = ""
+                        
+                        # Check if it's a MemoryRecord object with attributes
+                        if hasattr(memory, 'content'):
+                            content_obj = memory.content
+                            if hasattr(content_obj, 'text'):
+                                content_text = content_obj.text
+                            elif isinstance(content_obj, dict) and 'text' in content_obj:
+                                content_text = content_obj['text']
+                            else:
+                                content_text = str(content_obj)
+                        elif isinstance(memory, dict):
+                            # Fallback for dict structure
+                            if 'content' in memory:
+                                content_obj = memory['content']
+                                if isinstance(content_obj, dict) and 'text' in content_obj:
+                                    content_text = content_obj['text']
+                                else:
+                                    content_text = str(content_obj)
+                            elif 'text' in memory:
+                                content_text = memory['text']
+                        else:
+                            content_text = str(memory)
+                        
+                        print(f"[MEMORY] Extracted text {idx+1}: {content_text[:100]}...")
+                        
+                        # Try to parse JSON if it's a preference object
+                        final_content = content_text
+                        try:
+                            parsed = json.loads(content_text)
+                            if isinstance(parsed, dict):
+                                # Extract preference or main text
+                                final_content = parsed.get('preference', parsed.get('text', content_text))
+                        except (json.JSONDecodeError, TypeError):
+                            final_content = content_text
+                        
+                        print(f"[MEMORY] Final content {idx+1}: {final_content}")
+                        user_preferences += f"• {final_content}\n"
+                    user_preferences += "===========================================================\n"
+                    user_preferences += "IMPORTANT: Use these preferences to personalize your service. If you see the customer's name above, greet them by name!\n"
+                else:
+                    print(f"[MEMORY] No preferences or facts found for this user")
+            except Exception as e:
+                print(f"[MEMORY] Could not retrieve preferences: {e}")
+        except Exception as e:
+            print(f"[MEMORY] Memory initialization failed: {e}")
         
         
         if not self.client:
@@ -83,7 +187,7 @@ class NovaSonicBridge:
         )
         self.is_active = True
         
-        session_start_event = '{"event":{"sessionStart":{"inferenceConfiguration":{"maxTokens":4096,"topP":0.9,"temperature":0.7}}}}'
+        session_start_event = '{"event":{"sessionStart":{"inferenceConfiguration":{"maxTokens":4096,"topP":0.9,"temperature":0.5}}}}'
         log_model_input(self.session_span, f"session_start: {session_start_event}")
         await self.send_event(session_start_event)
         
@@ -121,23 +225,31 @@ class NovaSonicBridge:
         current_date = current_time.strftime('%Y-%m-%d')
         current_time_str = current_time.strftime('%H:%M:%S')
         
-        system_prompt = f"""You are an AI agent, a friendly restaurant host taking orders over the phone for Spice Garden Restaurant. You have a warm, professional tone and keep responses concise since people are listening, not reading.
+        system_prompt = f"""You are a friendly AI assistant helping customers order from Spice Garden Restaurant over the phone. Keep responses concise and natural.
 
 CURRENT DATE: {current_date}
 CURRENT TIME: {current_time_str}
 TIMEZONE: Asia/Kolkata (Current offset: {TIMEZONE_OFFSET})
+{user_preferences}
+GREETING EXAMPLES:
+- If this is a new customer: "Hello! Welcome to Spice Garden. Would you like dine-in or takeaway?"
+- If you know the customer's name: "Hello [Name]! Welcome back to Spice Garden. Would you like dine-in or takeaway today?"
+- DO NOT say "My name is" or introduce yourself with a name
 
 Your role:
-- Greet customers warmly and ask if they want dine-in or takeaway
+- Greet customers warmly (by name if you know it from preferences above) and ask if they want dine-in or takeaway
+- **Only ask for the customer's name if you don't already know it from the preferences above**
 - Present the menu and help customers choose items
 - For DINE-IN: Check availability and create reservations (need date, time, party size, name, phone)
 - For TAKEAWAY: Take the order, calculate bill with GST, and provide total
 
 Order flow:
-1. Ask: dine-in or takeaway?
-2. If dine-in: Get reservation details (date, time, party size, name, phone) → check availability → create reservation
-3. If takeaway: Create order → get menu items → add items → calculate bill → complete order
-4. Confirm all details before finalizing
+1. Greet customer (by name if known)
+2. Ask: dine-in or takeaway?
+3. **Only if name is NOT in preferences above**: Ask for customer's name
+4. If dine-in: Get reservation details (date, time, party size, phone) → check availability → create reservation
+5. If takeaway: Create order → get menu items → add items → calculate bill → complete order
+6. Confirm all details before finalizing
 
 Communication guidelines:
 - Keep responses to 2-3 sentences maximum
@@ -147,6 +259,7 @@ Communication guidelines:
 - When reading menu items, mention name and price in rupees only (skip descriptions unless asked)
 - Prices are in Indian Rupees (₹)
 - After completing takeaway orders, say "You will receive an SMS with order confirmation" (don't read out order numbers)
+- **If you know the customer's name from previous orders, greet them warmly by name at the start of the conversation**
 
 Tool usage:
 - Use get_menu to show menu categories or specific items
@@ -158,6 +271,8 @@ Tool usage:
 - Use reject_order if customer cancels
 
 Remember: You're helping customers have a great experience ordering from Spice Garden!"""
+
+        print(system_prompt)
         text_input = json.dumps({
             "event": {
                 "textInput": {
@@ -375,6 +490,19 @@ Remember: You're helping customers have a great experience ordering from Spice G
                                         "content_id": text_output.get('contentId', '')
                                     }
                                 )
+                        
+                        # Write to memory
+                        if self.memory_session and content and role in ['USER', 'ASSISTANT']:
+                            try:
+                                message_role = MessageRole.USER if role == 'USER' else MessageRole.ASSISTANT
+                                print(f"[MEMORY] Writing {role} message to memory: {content[:100]}...")
+                                await asyncio.to_thread(
+                                    self.memory_session.add_turns,
+                                    messages=[ConversationalMessage(content, message_role)]
+                                )
+                                print(f"[MEMORY] Successfully wrote {role} message to memory")
+                            except Exception as e:
+                                print(f"[MEMORY] Failed to write to memory: {e}")
                         
                         try:
                             content_json = json.loads(content)
